@@ -30,10 +30,11 @@ export async function GET(request: NextRequest) {
       },
     });
 
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
     console.error('Proxy image error:', error);
     return NextResponse.json(
-      { error: `Failed to proxy image: ${error.message}` },
+      { error: `Failed to proxy image: ${errorMessage}` },
       { status: 500 }
     );
   }

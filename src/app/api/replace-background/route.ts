@@ -8,6 +8,22 @@ if (!API_KEY) {
 
 const ai = new GoogleGenAI({ apiKey: API_KEY });
 
+interface ApiError extends Error {
+  status?: number;
+}
+
+function isApiError(error: unknown): error is ApiError {
+  return error instanceof Error && 'status' in error;
+}
+
+function getErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : 'Unknown error occurred';
+}
+
+function getErrorStatus(error: unknown): number | undefined {
+  return isApiError(error) ? error.status : undefined;
+}
+
 export async function POST(request: NextRequest) {
   try {
     const { carImageB64, backgroundImageB64, prompt } = await request.json();
@@ -59,8 +75,9 @@ export async function POST(request: NextRequest) {
         }
 
         throw new Error("No image was generated in the response.");
-      } catch (error: any) {
-        if (error.status === 503 && retries > 1) {
+      } catch (error: unknown) {
+        const errorStatus = getErrorStatus(error);
+        if (errorStatus === 503 && retries > 1) {
           retries--;
           console.log(`Retrying... ${retries} attempts left`);
           await new Promise(resolve => setTimeout(resolve, 2000)); // Wait 2 seconds
@@ -69,23 +86,26 @@ export async function POST(request: NextRequest) {
         throw error;
       }
     }
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Error replacing background:', error);
     
+    const errorMessage = getErrorMessage(error);
+    const errorStatus = getErrorStatus(error);
+    
     // More detailed error handling
-    if (error.status === 503) {
+    if (errorStatus === 503) {
       return NextResponse.json(
         { error: 'Gemini API is temporarily unavailable. Please try again in a few moments.' },
         { status: 503 }
       );
-    } else if (error.status === 401) {
+    } else if (errorStatus === 401) {
       return NextResponse.json(
         { error: 'Invalid API key. Please check your GEMINI_API_KEY.' },
         { status: 401 }
       );
     } else {
       return NextResponse.json(
-        { error: `Failed to replace background: ${error.message}` },
+        { error: `Failed to replace background: ${errorMessage}` },
         { status: 500 }
       );
     }

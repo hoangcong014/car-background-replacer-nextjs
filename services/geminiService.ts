@@ -1,19 +1,31 @@
 /**
  * Converts an image file from a URL to a base64 string.
- * This is a workaround for CORS issues when loading images from external domains onto a canvas.
+ * Uses a proxy API to avoid CORS issues.
  */
 export async function urlToBase64(url: string): Promise<string> {
-    const response = await fetch(url);
-    if (!response.ok) {
-        throw new Error(`Failed to fetch image from ${url}. Status: ${response.status}`);
+    try {
+        // Use our proxy API to avoid CORS issues
+        const proxyUrl = `/api/proxy-image?url=${encodeURIComponent(url)}`;
+        
+        const response = await fetch(proxyUrl, {
+            cache: 'no-cache',
+        });
+        
+        if (!response.ok) {
+            throw new Error(`Failed to fetch image via proxy. Status: ${response.status}`);
+        }
+        
+        const blob = await response.blob();
+        return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onloadend = () => resolve(reader.result as string);
+            reader.onerror = () => reject(new Error('Failed to convert image to base64'));
+            reader.readAsDataURL(blob);
+        });
+    } catch (error) {
+        console.error('Error in urlToBase64:', error);
+        throw new Error(`Failed to load image from ${url}. This might be due to network issues or invalid URL.`);
     }
-    const blob = await response.blob();
-    return new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onloadend = () => resolve(reader.result as string);
-        reader.onerror = reject;
-        reader.readAsDataURL(blob);
-    });
 }
 
 export async function replaceBackground(
@@ -44,11 +56,15 @@ export async function replaceBackground(
     throw new Error(data.error);
   }
 
-  // For testing - return a placeholder
-  if (data.message) {
-    console.log('API Test Response:', data);
-    throw new Error('API is working but image generation is not implemented yet');
+  // If we got an actual image
+  if (data.image) {
+    return data.image;
   }
 
-  return data.image;
+  // If we only got a description, show it to user
+  if (data.description) {
+    throw new Error(`Image generation not available. AI described the edit: ${data.description}`);
+  }
+
+  throw new Error('No image or description received');
 }

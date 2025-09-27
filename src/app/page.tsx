@@ -4,9 +4,9 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { ImageUploader } from '../../components/ImageUploader';
 import { replaceBackground, urlToBase64 } from '../../services/geminiService';
 
-const DEFAULT_CAR_IMAGE_URL = 'https://alexandria-projects-aqua-oriental.trycloudflare.com/screenshots/911.jpg';
-const DEFAULT_BACKGROUND_IMAGE_URL = 'https://resource-3.vcat.ai/resource/preset/imagine/nature/3001.png';
-const DEFAULT_PROMPT = "hoàng hôn ấm, cinematic, đường phố Tokyo mưa nhẹ";
+const DEFAULT_CAR_IMAGE_URL = process.env.NEXT_PUBLIC_DEFAULT_CAR_IMAGE_URL || 'https://alexandria-projects-aqua-oriental.trycloudflare.com/screenshots/911.jpg';
+const DEFAULT_BACKGROUND_IMAGE_URL = process.env.NEXT_PUBLIC_DEFAULT_BACKGROUND_IMAGE_URL || 'https://resource-3.vcat.ai/resource/preset/imagine/nature/3001.png';
+const DEFAULT_PROMPT = "hoàng hôn ấm, cinematic, đường phố Hồ Chí Minh mưa nhẹ";
 
 const Spinner = () => (
   <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
@@ -63,10 +63,6 @@ export default function HomePage() {
     reader.onloadend = () => setBackgroundImage(reader.result as string);
     reader.readAsDataURL(file);
   };
-  
-  const clearBackgroundImage = () => {
-    setBackgroundImage(null);
-  };
 
   const handleSubmit = async () => {
     if (!carImage) {
@@ -119,7 +115,6 @@ export default function HomePage() {
               id="background-uploader"
               label="2. Background Reference (Optional)"
               onImageChange={handleBackgroundImageChange}
-              onClear={clearBackgroundImage}
               defaultImage={backgroundImage}
               isLoading={isDefaultsLoading}
             />

@@ -4,7 +4,6 @@ interface ImageUploaderProps {
   id: string;
   label: string;
   onImageChange: (file: File) => void;
-  onClear?: () => void;
   defaultImage: string | null;
   isLoading: boolean;
 }
@@ -15,7 +14,7 @@ const UploadIcon = () => (
     </svg>
 );
 
-export const ImageUploader: React.FC<ImageUploaderProps> = ({ id, label, onImageChange, onClear, defaultImage, isLoading }) => {
+export const ImageUploader: React.FC<ImageUploaderProps> = ({ id, label, onImageChange, defaultImage, isLoading }) => {
   const inputRef = useRef<HTMLInputElement>(null);
 
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -38,7 +37,7 @@ export const ImageUploader: React.FC<ImageUploaderProps> = ({ id, label, onImage
   };
 
   return (
-    <div>
+    <div className="w-full">
       <label htmlFor={id} className="block text-sm font-medium text-gray-300 mb-2">{label}</label>
       <div 
         className="relative group aspect-video w-full bg-gray-700/50 border-2 border-dashed border-gray-600 rounded-lg flex justify-center items-center cursor-pointer hover:border-indigo-500 transition-colors"
@@ -63,12 +62,12 @@ export const ImageUploader: React.FC<ImageUploaderProps> = ({ id, label, onImage
                 <span className="mt-2 text-sm">Loading...</span>
             </div>
         ) : defaultImage ? (
-          <>
+          <div className="relative w-full h-full">
             <img src={defaultImage} alt="Preview" className="object-contain h-full w-full rounded-md" />
-            <div className="absolute inset-0 bg-black/60 flex flex-col justify-center items-center opacity-0 group-hover:opacity-100 transition-opacity rounded-md">
-                <p className="text-white text-center text-sm p-2">Click or drag to replace</p>
+            <div className="absolute inset-0 bg-black/60 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity rounded-md pointer-events-none">
+                <p className="text-white text-center text-sm font-medium px-4">Click or drag to replace</p>
             </div>
-          </>
+          </div>
         ) : (
           <div className="text-center">
             <UploadIcon />
@@ -76,11 +75,6 @@ export const ImageUploader: React.FC<ImageUploaderProps> = ({ id, label, onImage
           </div>
         )}
       </div>
-      {onClear && defaultImage && (
-        <button onClick={onClear} className="text-xs text-gray-400 hover:text-white mt-1">
-          Clear background image
-        </button>
-      )}
     </div>
   );
 };
