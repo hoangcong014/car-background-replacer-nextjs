@@ -8,6 +8,12 @@ if (!API_KEY) {
 
 const ai = new GoogleGenAI({ apiKey: API_KEY });
 
+// Cấu hình timeout và retry
+const REQUEST_TIMEOUT = 60000; // 60 giây
+const MAX_RETRIES = 3;
+const BASE_DELAY = 5000; // 5 giây base delay
+const MAX_DELAY = 30000; // 30 giây max delay
+
 interface ApiError extends Error {
   status?: number;
 }
@@ -24,9 +30,123 @@ function getErrorStatus(error: unknown): number | undefined {
   return isApiError(error) ? error.status : undefined;
 }
 
+// Tính toán delay với exponential backoff và jitter
+function calculateDelay(attempt: number): number {
+  const exponentialDelay = Math.min(BASE_DELAY * Math.pow(2, attempt - 1), MAX_DELAY);
+  // Thêm jitter (random factor) để tránh thundering herd
+  const jitter = Math.random() * 0.3 * exponentialDelay;
+  return Math.floor(exponentialDelay + jitter);
+}
+
+// Kiểm tra xem lỗi có thể retry được không
+function isRetryableError(error: unknown): boolean {
+  const status = getErrorStatus(error);
+  const message = getErrorMessage(error).toLowerCase();
+  
+  return (
+    status === 503 || // Service Unavailable
+    status === 502 || // Bad Gateway
+    status === 504 || // Gateway Timeout
+    status === 429 || // Too Many Requests
+    message.includes('timeout') ||
+    message.includes('network') ||
+    message.includes('connection')
+  );
+}
+
+// Promise với timeout
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
+  return Promise.race([
+    promise,
+    new Promise<never>((_, reject) => {
+      setTimeout(() => {
+        reject(new Error(`Request timed out after ${timeoutMs}ms`));
+      }, timeoutMs);
+    })
+  ]);
+}
+
+// Gemini API call với retry logic
+async function generateContentWithRetry(parts: Part[]): Promise<string> {
+  let lastError: unknown;
+  
+  for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+    try {
+      console.log(`Generating content - Attempt ${attempt}/${MAX_RETRIES}`);
+      
+      const response = await withTimeout(
+        ai.models.generateContent({
+          model: 'gemini-2.5-flash-image-preview',
+          contents: { parts },
+          config: {
+            responseModalities: [Modality.IMAGE, Modality.TEXT],
+          },
+        }),
+        REQUEST_TIMEOUT
+      );
+
+      // Validate response structure
+      if (!response.candidates || 
+          response.candidates.length === 0 || 
+          !response.candidates[0].content || 
+          !response.candidates[0].content.parts) {
+        throw new Error("Invalid response structure from Gemini API");
+      }
+
+      // Extract image data
+      for (const part of response.candidates[0].content.parts) {
+        if (part.inlineData && part.inlineData.data) {
+          console.log(`Successfully generated content on attempt ${attempt}`);
+          return part.inlineData.data;
+        }
+      }
+
+      throw new Error("No image was generated in the response");
+      
+    } catch (error: unknown) {
+      lastError = error;
+      const errorMessage = getErrorMessage(error);
+      const errorStatus = getErrorStatus(error);
+      
+      console.error(`Attempt ${attempt} failed:`, errorMessage);
+      
+      // Nếu không phải lỗi có thể retry, throw ngay
+      if (!isRetryableError(error)) {
+        console.error(`Non-retryable error (${errorStatus}):`, errorMessage);
+        throw error;
+      }
+      
+      // Nếu đã hết lần retry, throw error cuối cùng
+      if (attempt === MAX_RETRIES) {
+        console.error(`All ${MAX_RETRIES} attempts failed`);
+        throw error;
+      }
+      
+      // Tính toán thời gian delay và chờ
+      const delay = calculateDelay(attempt);
+      console.log(`Waiting ${delay}ms before retry ${attempt + 1}...`);
+      await new Promise(resolve => setTimeout(resolve, delay));
+    }
+  }
+  
+  throw lastError;
+}
+
 export async function POST(request: NextRequest) {
+  const startTime = Date.now();
+  
   try {
+    console.log('Starting background replacement request');
+    
     const { carImageB64, backgroundImageB64, prompt } = await request.json();
+
+    // Validate input
+    if (!carImageB64 || !prompt) {
+      return NextResponse.json(
+        { error: 'Missing required fields: carImageB64 and prompt are required' },
+        { status: 400 }
+      );
+    }
 
     const carImagePart: Part = {
       inlineData: {
@@ -57,55 +177,70 @@ export async function POST(request: NextRequest) {
 
     parts.push({ text: textPrompt });
 
-    // Retry logic for 503 errors
-    let retries = 3;
-    while (retries > 0) {
-      try {
-        const response = await ai.models.generateContent({
-          model: 'gemini-2.5-flash-image-preview',
-          contents: { parts },
-        });
-
-        if (response.candidates && response.candidates[0] && response.candidates[0].content && response.candidates[0].content.parts) {
-          for (const part of response.candidates[0].content.parts) {
-            if (part.inlineData && part.inlineData.data) {
-              return NextResponse.json({ image: part.inlineData.data });
-            }
-          }
-        }
-
-        throw new Error("No image was generated in the response.");
-      } catch (error: unknown) {
-        const errorStatus = getErrorStatus(error);
-        if (errorStatus === 503 && retries > 1) {
-          retries--;
-          console.log(`Retrying... ${retries} attempts left`);
-          await new Promise(resolve => setTimeout(resolve, 2000)); // Wait 2 seconds
-          continue;
-        }
-        throw error;
+    const imageData = await generateContentWithRetry(parts);
+    
+    const duration = Date.now() - startTime;
+    console.log(`Background replacement completed in ${duration}ms`);
+    
+    return NextResponse.json({ 
+      image: imageData,
+      metadata: {
+        processingTime: duration,
+        timestamp: new Date().toISOString()
       }
-    }
+    });
+    
   } catch (error: unknown) {
-    console.error('Error replacing background:', error);
+    const duration = Date.now() - startTime;
+    console.error(`Background replacement failed after ${duration}ms:`, error);
     
     const errorMessage = getErrorMessage(error);
     const errorStatus = getErrorStatus(error);
     
-    // More detailed error handling
-    if (errorStatus === 503) {
+    // Detailed error responses
+    if (errorMessage.includes('timed out')) {
       return NextResponse.json(
-        { error: 'Gemini API is temporarily unavailable. Please try again in a few moments.' },
+        { 
+          error: `Request timed out after ${REQUEST_TIMEOUT / 1000} seconds. The image processing is taking longer than expected.`,
+          code: 'TIMEOUT_ERROR',
+          processingTime: duration
+        },
+        { status: 408 }
+      );
+    } else if (errorStatus === 503) {
+      return NextResponse.json(
+        { 
+          error: 'Gemini API is temporarily overloaded. Please try again in a few minutes.',
+          code: 'SERVICE_UNAVAILABLE',
+          processingTime: duration
+        },
         { status: 503 }
       );
     } else if (errorStatus === 401) {
       return NextResponse.json(
-        { error: 'Invalid API key. Please check your GEMINI_API_KEY.' },
+        { 
+          error: 'Invalid API key. Please check your GEMINI_API_KEY configuration.',
+          code: 'AUTH_ERROR',
+          processingTime: duration
+        },
         { status: 401 }
+      );
+    } else if (errorStatus === 429) {
+      return NextResponse.json(
+        { 
+          error: 'Rate limit exceeded. Please wait before making another request.',
+          code: 'RATE_LIMIT_ERROR',
+          processingTime: duration
+        },
+        { status: 429 }
       );
     } else {
       return NextResponse.json(
-        { error: `Failed to replace background: ${errorMessage}` },
+        { 
+          error: `Failed to replace background: ${errorMessage}`,
+          code: 'PROCESSING_ERROR',
+          processingTime: duration
+        },
         { status: 500 }
       );
     }
