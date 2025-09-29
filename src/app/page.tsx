@@ -113,7 +113,7 @@ function HomePageContent() {
     <div className="min-h-screen bg-gray-900 text-gray-200 font-sans">
       <main className="container mx-auto p-4 md:p-8">
         <header className="text-center mb-8 md:mb-12">
-          <h1 className="text-4xl md:text-5xl font-bold text-white tracking-tight">Car Background Replacer</h1>
+          <h1 className="text-4xl md:text-5xl font-bold text-white tracking-tight">Auto Car Background</h1>
           <p className="text-lg text-gray-400 mt-2 max-w-2xl mx-auto">Upload a car photo, describe a new scene, and let AI do the magic.</p>
         </header>
 
