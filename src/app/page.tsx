@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useCallback } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { ImageUploader } from '../../components/ImageUploader';
 import { replaceBackground, urlToBase64 } from '../../services/geminiService';
 
@@ -22,6 +23,8 @@ const DownloadIcon = () => (
 );
 
 export default function HomePage() {
+  const searchParams = useSearchParams();
+  
   const [carImage, setCarImage] = useState<string | null>(null);
   const [backgroundImage, setBackgroundImage] = useState<string | null>(null);
   const [prompt, setPrompt] = useState<string>(DEFAULT_PROMPT);
@@ -34,19 +37,31 @@ export default function HomePage() {
     try {
       setError(null);
       setIsDefaultsLoading(true);
+      
+      // Lấy URLs từ query params hoặc dùng default
+      const carUrl = searchParams.get('carImageUrl') || DEFAULT_CAR_IMAGE_URL;
+      const bgUrl = searchParams.get('backgroundImageUrl') || DEFAULT_BACKGROUND_IMAGE_URL;
+      const urlPrompt = searchParams.get('prompt');
+      
+      // Set prompt từ URL nếu có
+      if (urlPrompt) {
+        setPrompt(urlPrompt);
+      }
+      
       const [carB64, bgB64] = await Promise.all([
-        urlToBase64(DEFAULT_CAR_IMAGE_URL),
-        urlToBase64(DEFAULT_BACKGROUND_IMAGE_URL),
+        urlToBase64(carUrl),
+        urlToBase64(bgUrl),
       ]);
+      
       setCarImage(carB64);
       setBackgroundImage(bgB64);
     } catch (err) {
-      setError("Failed to load default images. Please check your network connection.");
+      setError("Failed to load default images. Please check your network connection or image URLs.");
       console.error(err);
     } finally {
       setIsDefaultsLoading(false);
     }
-  }, []);
+  }, [searchParams]);
 
   useEffect(() => {
     loadDefaults();
