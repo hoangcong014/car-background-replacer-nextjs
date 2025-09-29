@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { ImageUploader } from '../../components/ImageUploader';
 import { replaceBackground, urlToBase64 } from '../../services/geminiService';
@@ -22,7 +22,8 @@ const DownloadIcon = () => (
     </svg>
 );
 
-export default function HomePage() {
+// Component con để sử dụng useSearchParams
+function HomePageContent() {
   const searchParams = useSearchParams();
   
   const [carImage, setCarImage] = useState<string | null>(null);
@@ -186,5 +187,21 @@ export default function HomePage() {
         </div>
       </main>
     </div>
+  );
+}
+
+// Component chính với Suspense boundary
+export default function HomePage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen bg-gray-900 flex items-center justify-center">
+        <div className="text-white text-center">
+          <Spinner />
+          <p className="mt-4">Loading...</p>
+        </div>
+      </div>
+    }>
+      <HomePageContent />
+    </Suspense>
   );
 }
