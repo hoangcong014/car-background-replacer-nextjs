@@ -2,7 +2,7 @@ import type { Metadata } from 'next'
 import './globals.css'
 
 export const metadata: Metadata = {
-  title: 'Car Background Replacer',
+  title: 'Auto Car Background',
   description: 'An application that allows users to upload a car photo, provide a background description or a reference image, and uses AI to replace the background while keeping the car in the foreground.',
 }
 
